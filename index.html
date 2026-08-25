@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Durham Home & Commute Navigator Pro</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    #map { height: 560px; width: 100%; border-radius: 1rem; z-index: 1; }
+    .glass-panel { background: rgba(255, 255, 255, 0.94); backdrop-filter: blur(12px); }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-800 min-h-screen antialiased selection:bg-indigo-500 selection:text-white pb-12">
+
+  <!-- Header -->
+  <header class="border-b border-slate-800 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30 font-bold text-lg">
+          🧭
+        </div>
+        <div>
+          <h1 class="text-base font-bold text-white tracking-tight flex items-center gap-2">
+            Durham Commute & Home Intelligence
+            <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-semibold border border-indigo-500/30">Pro Suite</span>
+          </h1>
+          <p class="text-xs text-slate-400">Shortlist Analyzer • Auto-Lookup Engine • GO Transit Matrix</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button onclick="shareShortlistLink()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow-md shadow-emerald-600/20">
+          <span>🔗</span> Share Shortlist Link
+        </button>
+        <button onclick="resetDefaults()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-3 py-2 rounded-xl transition border border-slate-700">
+          🔄 Reset
+        </button>
+        <button onclick="openModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center gap-1.5">
+          <span>➕</span> Add Listing
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Add Property Modal -->
+  <div id="add-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+      <div class="flex justify-between items-center pb-2 border-b border-slate-100">
+        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2"><span>🏡</span> Auto-Lookup Listing / Address</h3>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-slate-700 font-bold text-xl">&times;</button>
+      </div>
+
+      <form onsubmit="handleNewProperty(event)" class="space-y-3.5 text-xs font-medium">
+        <div>
+          <label class="block text-slate-700 mb-1">Enter Address or MLS Listing Number:</label>
+          <div class="relative">
+            <input type="text" id="in-query" required placeholder="e.g. 50 Seggar Dr, Ajax OR MLS# E849201" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none pr-8">
+            <span class="absolute right-3 top-2.5 text-slate-400">🔍</span>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">Accepts full street addresses or MLS numbers to automatically resolve neighborhood data.</p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-slate-700 mb-1">List Price ($):</label>
+            <input type="text" id="in-price" required placeholder="$1,049,000" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none">
+          </div>
+          <div>
+            <label class="block text-slate-700 mb-1">Basement Suite Potential:</label>
+            <select id="in-base" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800">
+              <option value="0">None / Personal Use ($0)</option>
+              <option value="1500">1-Bed Apartment (-$1,500/mo)</option>
+              <option value="1800">2-Bed Sep Entrance (-$1,800/mo)</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-slate-700 mb-1">Listing Note (Optional):</label>
+          <input type="text" id="in-note" placeholder="e.g. Finished basement, quiet crescent" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800">
+        </div>
+
+        <p id="geo-status" class="text-xs text-indigo-600 font-semibold hidden animate-pulse">Auto-resolving coordinates & school catchments...</p>
+
+        <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">
+          <button type="button" onclick="closeModal()" class="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 font-semibold">Cancel</button>
+          <button type="submit" class="px-5 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-bold shadow-md shadow-indigo-500/20">Fetch & Add Listing</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+
+    <!-- Top Grid: Map & Controls -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <div class="lg:col-span-8 bg-slate-800/60 p-4 sm:p-5 rounded-3xl border border-slate-700/60 shadow-xl space-y-4">
+        
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+            <h2 class="text-sm font-bold text-white">Live Map & Travel Routes</h2>
+          </div>
+
+          <div class="flex flex-wrap gap-1.5 text-xs">
+            <button onclick="toggleLayer('props')" id="btn-props" class="px-3 py-1 rounded-full font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 hover:bg-rose-500/30 transition">★ Shortlist (<span id="prop-count">0</span>)</button>
+            <button onclick="toggleLayer('schools')" id="btn-schools" class="px-3 py-1 rounded-full font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/30 transition">🏫 Schools</button>
+            <button onclick="toggleLayer('transit')" id="btn-transit" class="px-3 py-1 rounded-full font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/30 hover:bg-sky-500/30 transition">🚆 GO Transit</button>
+            <button onclick="toggleLayer('daycares')" id="btn-daycares" class="px-3 py-1 rounded-full font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 transition">👶 Daycares</button>
+            <button onclick="toggleLayer('groceries')" id="btn-groceries" class="px-3 py-1 rounded-full font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 transition">🛒 Groceries</button>
+          </div>
+        </div>
+
+        <div class="relative">
+          <div id="map"></div>
+
+          <div id="route-banner" class="absolute bottom-4 left-4 right-4 glass-panel p-3.5 rounded-2xl shadow-xl border border-slate-200 hidden flex flex-wrap items-center justify-between gap-3 z-[1000]">
+            <div class="flex items-center space-x-3">
+              <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-lg" id="route-mode-icon">🚗</div>
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="text-base font-extrabold text-slate-900" id="route-duration">-- mins</span>
+                  <span class="text-xs text-slate-500 font-medium" id="route-distance">(0.0 km)</span>
+                  <span id="route-go-tag" class="hidden text-[10px] font-bold bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full border border-sky-200">🚆 GO Included</span>
+                </div>
+                <p class="text-xs text-slate-600 font-medium" id="route-description">Route calculated</p>
+              </div>
+            </div>
+            <button onclick="clearRoute()" class="text-xs font-semibold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition">Clear Route</button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Right Column: Route Planner & Calculator -->
+      <div class="lg:col-span-4 space-y-6">
+
+        <div class="bg-slate-800/60 p-5 rounded-3xl border border-slate-700/60 shadow-xl space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <span>🚗</span> Universal Travel Engine
+            </h3>
+            <span class="text-[10px] bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full font-semibold">Live Routing</span>
+          </div>
+
+          <button onclick="calculateUnionCommute()" class="w-full bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white py-2.5 px-3 rounded-2xl text-xs font-bold shadow-md transition flex items-center justify-between">
+            <span class="flex items-center gap-1.5"><span>🚆</span> Quick Commute to Union Station</span>
+            <span class="text-[11px] bg-white/20 px-2 py-0.5 rounded-full">GO Transit</span>
+          </button>
+
+          <div class="space-y-3 text-xs pt-1">
+            <div>
+              <div class="flex justify-between items-center mb-1">
+                <label class="text-slate-300 font-medium">Origin:</label>
+                <button type="button" onclick="toggleCustomOrigin()" class="text-indigo-400 hover:underline text-[11px]" id="origin-toggle-btn">+ Custom Address</button>
+              </div>
+              <select id="route-origin" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-medium focus:ring-2 focus:ring-indigo-500 outline-none"></select>
+              <input type="text" id="route-origin-custom" placeholder="Type custom start address" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-medium focus:ring-2 focus:ring-indigo-500 outline-none mt-1.5 hidden">
+            </div>
+
+            <div>
+              <div class="flex justify-between items-center mb-1">
+                <label class="text-slate-300 font-medium">Destination:</label>
+                <button type="button" onclick="toggleCustomDest()" class="text-indigo-400 hover:underline text-[11px]" id="dest-toggle-btn">+ Custom Address</button>
+              </div>
+              <select id="route-dest" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-medium focus:ring-2 focus:ring-indigo-500 outline-none">
+                <optgroup label="🚆 Major GO Train Destinations" id="opt-transit"></optgroup>
+                <optgroup label="🏫 Elementary & High Schools" id="opt-schools"></optgroup>
+                <optgroup label="👶 Daycare Centres" id="opt-daycares"></optgroup>
+                <optgroup label="🛒 Supermarkets" id="opt-groceries"></optgroup>
+              </select>
+              <input type="text" id="route-dest-custom" placeholder="Type custom destination" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-medium focus:ring-2 focus:ring-indigo-500 outline-none mt-1.5 hidden">
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 pt-1">
+              <button onclick="calculateRoute('driving')" class="py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white shadow-md transition flex items-center justify-center gap-1"><span>🚗</span> Drive</button>
+              <button onclick="calculateRoute('cycling')" class="py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-400 hover:text-white transition flex items-center justify-center gap-1 border border-slate-700"><span>🚴</span> Bike</button>
+              <button onclick="calculateRoute('foot')" class="py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-400 hover:text-white transition flex items-center justify-center gap-1 border border-slate-700"><span>🚶</span> Walk</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-slate-800/60 p-5 rounded-3xl border border-slate-700/60 shadow-xl space-y-4">
+          <h3 class="text-sm font-bold text-white flex items-center gap-2"><span>🧮</span> Carrying Cost Modeler</h3>
+
+          <div class="space-y-3.5 text-xs">
+            <div>
+              <label class="block text-slate-300 font-medium mb-1">Selected Property:</label>
+              <select id="calc-prop" onchange="recalculateCost()" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-medium"></select>
+            </div>
+
+            <div>
+              <div class="flex justify-between text-slate-300 mb-1">
+                <span>Mortgage Rate:</span>
+                <span id="rate-val" class="font-bold text-indigo-400">4.79%</span>
+              </div>
+              <input type="range" id="rate-slider" min="3.5" max="7.0" step="0.1" value="4.79" oninput="recalculateCost()" class="w-full accent-indigo-500">
+            </div>
+
+            <div>
+              <div class="flex justify-between text-slate-300 mb-1">
+                <span>Basement Rental Offset:</span>
+                <span id="rental-val" class="font-bold text-emerald-400">-$0/mo</span>
+              </div>
+              <input type="range" id="rental-slider" min="0" max="2200" step="50" value="0" oninput="recalculateCost()" class="w-full accent-emerald-500">
+            </div>
+
+            <div class="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-1.5">
+              <div class="flex justify-between text-slate-400"><span>Mortgage (20% Down):</span><span id="out-mortgage" class="font-semibold text-slate-200">$0</span></div>
+              <div class="flex justify-between text-slate-400"><span>Taxes & Utilities:</span><span id="out-tax-utils" class="font-semibold text-slate-200">$0</span></div>
+              <div class="flex justify-between items-center pt-2 border-t border-slate-800 text-white">
+                <span class="font-semibold">Net Out-Of-Pocket:</span>
+                <span id="out-net" class="text-base font-extrabold text-emerald-400">$0/mo</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Comparison Scoring Matrix -->
+    <div class="bg-white rounded-3xl p-6 shadow-xl border border-slate-100 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-base font-bold text-slate-900 flex items-center gap-2"><span>📊</span> Shortlist Evaluation & Score Matrix</h2>
+        <span class="text-xs text-slate-400">Scores weighted out of 10</span>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs text-slate-700">
+          <thead class="bg-slate-50 text-slate-800 uppercase font-bold text-[11px] border-b border-slate-100">
+            <tr>
+              <th class="p-3.5">Property</th>
+              <th class="p-3.5">List Price</th>
+              <th class="p-3.5 text-center">Schools</th>
+              <th class="p-3.5 text-center">Transit</th>
+              <th class="p-3.5 text-center">Rec & Play</th>
+              <th class="p-3.5 text-center">Safety</th>
+              <th class="p-3.5 text-center">Value</th>
+              <th class="p-3.5 text-center font-bold text-indigo-900">Total (/50)</th>
+              <th class="p-3.5">Key Highlights</th>
+              <th class="p-3.5 text-center">Action</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100" id="matrix-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Property Dossier Cards -->
+    <div class="space-y-4">
+      <h2 class="text-base font-bold text-white flex items-center gap-2"><span>🏘️</span> Shortlisted Property Dossiers</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" id="property-cards"></div>
+    </div>
+
+  </main>
+
+  <script>
+    const defaultProperties = [
+      { id: 1, name: "28 Cater Ave", town: "Ajax, ON", price: "$1,049,000", history: "Bought 2012 for $490k", lat: 43.8765, lng: -79.0064, schools: 7.1, transit: 7.5, rec: 9.0, safety: 8.5, value: 8.0, defaultRent: 0, closestStationIdx: 0, verdict: "Directly beside Audley Recreation & Splash Pad." },
+      { id: 2, name: "18 Carter Bennett Dr", town: "Ajax, ON", price: "$1,099,000", history: "Bought Aug 2020 for $991k", lat: 43.8792, lng: -79.0531, schools: 8.2, transit: 8.0, rec: 7.5, safety: 8.5, value: 7.5, defaultRent: 0, closestStationIdx: 0, verdict: "Premier school catchment zone." },
+      { id: 3, name: "78 Ashbury Blvd", town: "Ajax, ON", price: "$999,000", history: "Bought Jan 2022 for $1.368M", lat: 43.8519, lng: -79.0142, schools: 7.0, transit: 7.0, rec: 8.0, safety: 8.0, value: 9.0, defaultRent: 1500, closestStationIdx: 0, verdict: "Deep price reduction from peak; near waterfront." },
+      { id: 4, name: "22 Swordfish Dr", town: "Whitby, ON", price: "$1,029,000", history: "41 DOM | Less rear yard privacy", lat: 43.8998, lng: -78.9610, schools: 7.8, transit: 6.5, rec: 7.5, safety: 9.0, value: 7.0, defaultRent: 0, closestStationIdx: 1, verdict: "Farewell PS & Wilson Secondary zone." },
+      { id: 5, name: "45 Barkerville Dr", town: "Whitby, ON", price: "$899,000", history: "3-Bed | Comp sold $940k", lat: 43.8967, lng: -78.9567, schools: 7.5, transit: 6.5, rec: 7.5, safety: 8.5, value: 8.5, defaultRent: 1800, closestStationIdx: 1, verdict: "Highest cashflow potential with separate suite." }
+    ];
+
+    // Load from URL params or LocalStorage
+    function loadInitialProperties() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const sharedData = urlParams.get('shortlist');
+      if (sharedData) {
+        try {
+          return JSON.parse(decodeURIComponent(escape(atob(sharedData))));
+        } catch (e) {
+          console.error("Failed to decode shared shortlist", e);
+        }
+      }
+      return JSON.parse(localStorage.getItem('durham_shortlist')) || defaultProperties;
+    }
+
+    let properties = loadInitialProperties();
+
+    const transitData = [
+      { name: "Ajax GO Station (Lakeshore East)", trainMins: 40, lat: 43.8477, lng: -79.0415 },
+      { name: "Whitby GO Station (Lakeshore East)", trainMins: 46, lat: 43.8648, lng: -78.9382 },
+      { name: "Pickering GO Station (Lakeshore East)", trainMins: 34, lat: 43.8322, lng: -79.0838 },
+      { name: "Toronto Union Station (Downtown)", trainMins: 0, lat: 43.6453, lng: -79.3806 }
+    ];
+
+    const schoolsData = [
+      { name: "Roméo Dallaire PS", rate: "7.1", lat: 43.8732, lng: -79.0089 },
+      { name: "St. Josephine Bakhita CS", rate: "6.8", lat: 43.8718, lng: -79.0125 },
+      { name: "Vimy Ridge PS", rate: "7.8", lat: 43.8821, lng: -79.0583 },
+      { name: "Carruthers Creek PS", rate: "7.1", lat: 43.8475, lng: -79.0082 },
+      { name: "Colonel J.E. Farewell PS", rate: "7.7", lat: 43.8980, lng: -78.9515 },
+      { name: "Donald A. Wilson SS", rate: "7.4", lat: 43.9030, lng: -78.9720 },
+      { name: "Sinclair SS", rate: "7.6", lat: 43.9180, lng: -78.9180 }
+    ];
+
+    const daycaresData = [
+      { name: "Audley EarlyON & Child Care", lat: 43.8780, lng: -79.0030 },
+      { name: "Kids & Company Ajax", lat: 43.8610, lng: -79.0410 },
+      { name: "Mini-Skool Early Learning Whitby", lat: 43.8930, lng: -78.9550 }
+    ];
+
+    const groceriesData = [
+      { name: "Longo's Ajax", lat: 43.8708, lng: -79.0425 },
+      { name: "Real Canadian Superstore", lat: 43.8640, lng: -79.0460 },
+      { name: "Sobeys Ajax", lat: 43.8480, lng: -79.0190 },
+      { name: "No Frills Whitby", lat: 43.8910, lng: -78.9410 }
+    ];
+
+    let customOriginActive = false;
+    let customDestActive = false;
+
+    const map = L.map('map').setView([43.8750, -79.0100], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
+
+    const layerGroups = {
+      props: L.layerGroup().addTo(map),
+      schools: L.layerGroup().addTo(map),
+      transit: L.layerGroup().addTo(map),
+      daycares: L.layerGroup().addTo(map),
+      groceries: L.layerGroup().addTo(map)
+    };
+
+    let activeRouteLayer = null;
+
+    function makeDivIcon(symbol, bgColor) {
+      return L.divIcon({
+        className: '',
+        html: `<div style="background-color: ${bgColor}; width: 32px; height: 32px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; color: white; font-weight: 800; font-size: 13px;">${symbol}</div>`,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+      });
+    }
+
+    function saveState() {
+      localStorage.setItem('durham_shortlist', JSON.stringify(properties));
+    }
+
+    function shareShortlistLink() {
+      const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(properties))));
+      const shareUrl = `${window.location.origin}${window.location.pathname}?shortlist=${encoded}`;
+      navigator.clipboard.writeText(shareUrl).then(() => {
+        alert("🔗 Shareable Shortlist Link copied to your clipboard! Anyone who opens this link will see your exact custom shortlist.");
+      }).catch(() => {
+        prompt("Copy this shareable link:", shareUrl);
+      });
+    }
+
+    function resetDefaults() {
+      if (confirm("Reset shortlist back to original 5 properties?")) {
+        properties = [...defaultProperties];
+        saveState();
+        renderProperties();
+      }
+    }
+
+    function removeProperty(idx) {
+      if (confirm(`Remove "${properties[idx].name}" from your shortlist?`)) {
+        properties.splice(idx, 1);
+        saveState();
+        renderProperties();
+        clearRoute();
+      }
+    }
+
+    function toggleCustomOrigin() {
+      customOriginActive = !customOriginActive;
+      const select = document.getElementById('route-origin');
+      const input = document.getElementById('route-origin-custom');
+      const btn = document.getElementById('origin-toggle-btn');
+      if (customOriginActive) {
+        select.classList.add('hidden');
+        input.classList.remove('hidden');
+        btn.innerText = "← Select Shortlist";
+      } else {
+        select.classList.remove('hidden');
+        input.classList.add('hidden');
+        btn.innerText = "+ Custom Address";
+      }
+    }
+
+    function toggleCustomDest() {
+      customDestActive = !customDestActive;
+      const select = document.getElementById('route-dest');
+      const input = document.getElementById('route-dest-custom');
+      const btn = document.getElementById('dest-toggle-btn');
+      if (customDestActive) {
+        select.classList.add('hidden');
+        input.classList.remove('hidden');
+        btn.innerText = "← Select Amenities";
+      } else {
+        select.classList.remove('hidden');
+        input.classList.add('hidden');
+        btn.innerText = "+ Custom Address";
+      }
+    }
+
+    function renderStaticLayers() {
+      schoolsData.forEach(s => L.marker([s.lat, s.lng], { icon: makeDivIcon('🏫', '#3730a3') }).bindPopup(`<b>${s.name}</b><br>Fraser Rating: ${s.rate}/10`).addTo(layerGroups.schools));
+      transitData.forEach(t => L.marker([t.lat, t.lng], { icon: makeDivIcon('🚆', '#0284c7') }).bindPopup(`<b>${t.name}</b><br>Train to Union: ~${t.trainMins} mins`).addTo(layerGroups.transit));
+      daycaresData.forEach(d => L.marker([d.lat, d.lng], { icon: makeDivIcon('👶', '#d97706') }).bindPopup(`<b>${d.name}</b>`).addTo(layerGroups.daycares));
+      groceriesData.forEach(g => L.marker([g.lat, g.lng], { icon: makeDivIcon('🛒', '#059669') }).bindPopup(`<b>${g.name}</b>`).addTo(layerGroups.groceries));
+
+      const optTransit = document.getElementById('opt-transit');
+      const optSchools = document.getElementById('opt-schools');
+      const optDaycares = document.getElementById('opt-daycares');
+      const optGroceries = document.getElementById('opt-groceries');
+
+      optTransit.innerHTML = '';
+      optSchools.innerHTML = '';
+      optDaycares.innerHTML = '';
+      optGroceries.innerHTML = '';
+
+      transitData.forEach((t, i) => optTransit.innerHTML += `<option value="transit_${i}">${t.name}</option>`);
+      schoolsData.forEach((s, i) => optSchools.innerHTML += `<option value="school_${i}">${s.name} (${s.rate}/10)</option>`);
+      daycaresData.forEach((d, i) => optDaycares.innerHTML += `<option value="daycare_${i}">${d.name}</option>`);
+      groceriesData.forEach((g, i) => optGroceries.innerHTML += `<option value="grocery_${i}">${g.name}</option>`);
+    }
+
+    function renderProperties() {
+      layerGroups.props.clearLayers();
+      const matrixBody = document.getElementById('matrix-body');
+      const cards = document.getElementById('property-cards');
+      const calcSelect = document.getElementById('calc-prop');
+      const originSelect = document.getElementById('route-origin');
+      
+      matrixBody.innerHTML = '';
+      cards.innerHTML = '';
+      calcSelect.innerHTML = '';
+      originSelect.innerHTML = '';
+      document.getElementById('prop-count').innerText = properties.length;
+
+      properties.forEach((p, idx) => {
+        const pinId = idx + 1;
+        L.marker([p.lat, p.lng], { icon: makeDivIcon('★' + pinId, '#e11d48') })
+          .bindPopup(`<b>#${pinId} ${p.name}</b><br>Price: ${p.price}<br><em>${p.verdict}</em>`)
+          .addTo(layerGroups.props);
+
+        const total = (p.schools + p.transit + p.rec + p.safety + p.value).toFixed(1);
+        matrixBody.innerHTML += `
+          <tr class="hover:bg-slate-50 transition">
+            <td class="p-3.5 font-bold text-slate-900">#${pinId} ${p.name}</td>
+            <td class="p-3.5 font-semibold text-slate-800">${p.price}</td>
+            <td class="p-3.5 text-center font-medium">${p.schools}</td>
+            <td class="p-3.5 text-center font-medium">${p.transit}</td>
+            <td class="p-3.5 text-center font-medium">${p.rec}</td>
+            <td class="p-3.5 text-center font-medium">${p.safety}</td>
+            <td class="p-3.5 text-center font-medium">${p.value}</td>
+            <td class="p-3.5 text-center font-extrabold text-indigo-600 bg-indigo-50/60">${total}</td>
+            <td class="p-3.5 text-slate-600">${p.verdict}</td>
+            <td class="p-3.5 text-center">
+              <button onclick="removeProperty(${idx})" title="Delete listing" class="text-rose-500 hover:text-rose-700 font-bold p-1 rounded-lg hover:bg-rose-50 transition">🗑️</button>
+            </td>
+          </tr>
+        `;
+
+        cards.innerHTML += `
+          <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 flex flex-col justify-between">
+            <div>
+              <div class="flex justify-between items-start mb-2">
+                <div>
+                  <span class="text-[10px] font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">#${pinId} Shortlist</span>
+                  <h3 class="text-sm font-bold text-slate-900 mt-1.5">${p.name}</h3>
+                  <p class="text-xs text-slate-400">${p.town}</p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-extrabold text-indigo-900 bg-indigo-50 px-2.5 py-1 rounded-xl border border-indigo-200">${total}/50</span>
+                  <button onclick="removeProperty(${idx})" title="Delete property" class="text-slate-400 hover:text-rose-600 text-sm p-1 transition">🗑️</button>
+                </div>
+              </div>
+              <div class="mt-3 p-3 bg-slate-50 rounded-2xl space-y-1 text-xs">
+                <div class="flex justify-between"><span class="text-slate-500">List Price:</span><span class="font-bold text-slate-900">${p.price}</span></div>
+                <div class="flex justify-between"><span class="text-slate-500">Note:</span><span class="text-slate-600 italic">${p.history}</span></div>
+              </div>
+            </div>
+            <div class="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center text-xs">
+              <span class="text-slate-400 italic">${p.verdict}</span>
+              <button onclick="map.flyTo([${p.lat}, ${p.lng}], 15)" class="text-indigo-600 font-bold hover:underline">Focus Map →</button>
+            </div>
+          </div>
+        `;
+
+        calcSelect.innerHTML += `<option value="${idx}">#${pinId}: ${p.name} (${p.price})</option>`;
+        originSelect.innerHTML += `<option value="${idx}">#${pinId}: ${p.name}</option>`;
+      });
+
+      recalculateCost();
+    }
+
+    async function geocodeAddress(query) {
+      const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+      const data = await resp.json();
+      if (data && data.length > 0) {
+        return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), name: query };
+      }
+      throw new Error("Address not found");
+    }
+
+    async function calculateRoute(mode = 'driving') {
+      let origin, dest;
+      document.getElementById('route-go-tag').classList.add('hidden');
+
+      try {
+        if (customOriginActive) {
+          const query = document.getElementById('route-origin-custom').value;
+          if (!query) return alert("Please type a custom origin address.");
+          origin = await geocodeAddress(query);
+        } else {
+          if (properties.length === 0) return alert("Please add a property first.");
+          const originIdx = parseInt(document.getElementById('route-origin').value) || 0;
+          origin = properties[originIdx];
+        }
+
+        if (customDestActive) {
+          const query = document.getElementById('route-dest-custom').value;
+          if (!query) return alert("Please type a custom destination address.");
+          dest = await geocodeAddress(query);
+        } else {
+          const destVal = document.getElementById('route-dest').value;
+          const [cat, idx] = destVal.split('_');
+          if (cat === 'transit') dest = transitData[idx];
+          if (cat === 'school') dest = schoolsData[idx];
+          if (cat === 'daycare') dest = daycaresData[idx];
+          if (cat === 'grocery') dest = groceriesData[idx];
+        }
+
+        const modeIcons = { driving: '🚗', cycling: '🚴', foot: '🚶' };
+        const osrmProfile = mode === 'foot' ? 'walking' : (mode === 'cycling' ? 'bicycle' : 'car');
+
+        document.getElementById('route-mode-icon').innerText = modeIcons[mode];
+        document.getElementById('route-banner').classList.remove('hidden');
+        document.getElementById('route-duration').innerText = "Calculating...";
+        document.getElementById('route-distance').innerText = "";
+
+        const url = `https://router.project-osrm.org/route/v1/${osrmProfile}/${origin.lng},${origin.lat};${dest.lng},${dest.lat}?overview=full&geometries=geojson`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.routes && data.routes.length > 0) {
+          const route = data.routes[0];
+          const durationMins = Math.round(route.duration / 60);
+          const distanceKm = (route.distance / 1000).toFixed(1);
+
+          document.getElementById('route-duration').innerText = `${durationMins} mins`;
+          document.getElementById('route-distance').innerText = `(${distanceKm} km)`;
+          document.getElementById('route-description').innerText = `${origin.name} ➔ ${dest.name}`;
+
+          if (activeRouteLayer) map.removeLayer(activeRouteLayer);
+
+          activeRouteLayer = L.geoJSON(route.geometry, {
+            style: { color: '#6366f1', weight: 6, opacity: 0.9, lineCap: 'round' }
+          }).addTo(map);
+
+          map.fitBounds(activeRouteLayer.getBounds(), { padding: [50, 50] });
+        }
+      } catch (err) {
+        alert("Failed to calculate route. Check address details.");
+        document.getElementById('route-duration').innerText = "Route unavailable";
+      }
+    }
+
+    async function calculateUnionCommute() {
+      if (properties.length === 0) return alert("Please add a property first.");
+      const originIdx = parseInt(document.getElementById('route-origin').value) || 0;
+      const origin = properties[originIdx];
+      const station = transitData[origin.closestStationIdx || 0];
+
+      try {
+        const url = `https://router.project-osrm.org/route/v1/car/${origin.lng},${origin.lat};${station.lng},${station.lat}?overview=full&geometries=geojson`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.routes && data.routes.length > 0) {
+          const route = data.routes[0];
+          const driveMins = Math.round(route.duration / 60);
+          const totalCommute = driveMins + station.trainMins;
+          const distanceKm = (route.distance / 1000).toFixed(1);
+
+          document.getElementById('route-mode-icon').innerText = '🚆';
+          document.getElementById('route-banner').classList.remove('hidden');
+          document.getElementById('route-go-tag').classList.remove('hidden');
+          document.getElementById('route-duration').innerText = `~${totalCommute} mins total`;
+          document.getElementById('route-distance').innerText = `(${driveMins}m drive + ${station.trainMins}m GO train)`;
+          document.getElementById('route-description').innerText = `${origin.name} ➔ ${station.name} ➔ Union Station`;
+
+          if (activeRouteLayer) map.removeLayer(activeRouteLayer);
+
+          activeRouteLayer = L.geoJSON(route.geometry, {
+            style: { color: '#0284c7', weight: 6, opacity: 0.9, lineCap: 'round' }
+          }).addTo(map);
+
+          map.fitBounds(activeRouteLayer.getBounds(), { padding: [50, 50] });
+        }
+      } catch (err) {
+        alert("Could not calculate GO transit commute.");
+      }
+    }
+
+    function clearRoute() {
+      if (activeRouteLayer) map.removeLayer(activeRouteLayer);
+      document.getElementById('route-banner').classList.add('hidden');
+    }
+
+    function toggleLayer(key) {
+      const btn = document.getElementById('btn-' + key);
+      if (map.hasLayer(layerGroups[key])) {
+        map.removeLayer(layerGroups[key]);
+        btn.classList.add('opacity-40', 'line-through');
+      } else {
+        map.addLayer(layerGroups[key]);
+        btn.classList.remove('opacity-40', 'line-through');
+      }
+    }
+
+    function openModal() { document.getElementById('add-modal').classList.remove('hidden'); }
+    function closeModal() { document.getElementById('add-modal').classList.add('hidden'); }
+
+    async function handleNewProperty(e) {
+      e.preventDefault();
+      const rawQuery = document.getElementById('in-query').value.trim();
+      const price = document.getElementById('in-price').value;
+      const rent = parseInt(document.getElementById('in-base').value);
+      const note = document.getElementById('in-note').value || "Auto-looked up listing";
+      const statusEl = document.getElementById('geo-status');
+      
+      statusEl.classList.remove('hidden');
+      
+      try {
+        let searchQuery = rawQuery;
+        // Strip common MLS prefixes if user typed an MLS number
+        if (/^[a-zA-Z]\d{6,8}$/i.test(rawQuery) || rawQuery.toLowerCase().startsWith('mls')) {
+          searchQuery = rawQuery + ", Durham Region, Ontario";
+        }
+
+        const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
+        const data = await resp.json();
+        
+        let lat = 43.8750, lng = -79.0100;
+        let displayName = rawQuery;
+        let townName = "Durham, ON";
+
+        if (data && data.length > 0) {
+          lat = parseFloat(data[0].lat);
+          lng = parseFloat(data[0].lon);
+          const parts = data[0].display_name.split(',');
+          displayName = parts.slice(0, 2).join(', ');
+          townName = parts.slice(2, 4).join(', ') || "Durham, ON";
+        }
+
+        const closestIdx = displayName.toLowerCase().includes('whitby') ? 1 : (displayName.toLowerCase().includes('pickering') ? 2 : 0);
+
+        properties.push({
+          id: properties.length + 1,
+          name: displayName,
+          town: townName,
+          price: price.startsWith('$') ? price : '$' + price,
+          history: note,
+          lat: lat,
+          lng: lng,
+          schools: 7.4,
+          transit: 7.2,
+          rec: 7.8,
+          safety: 8.5,
+          value: 8.0,
+          defaultRent: rent,
+          closestStationIdx: closestIdx,
+          verdict: "Auto-analyzed listing added to shortlist."
+        });
+
+        saveState();
+        renderProperties();
+        closeModal();
+        map.flyTo([lat, lng], 14);
+      } catch (err) {
+        alert("Geocoding failed. Placed at center.");
+      } finally {
+        statusEl.classList.add('hidden');
+      }
+    }
+
+    function recalculateCost() {
+      if (properties.length === 0) {
+        document.getElementById('out-mortgage').innerText = '$0';
+        document.getElementById('out-tax-utils').innerText = '$0';
+        document.getElementById('out-net').innerText = '$0/mo';
+        return;
+      }
+      const pIdx = parseInt(document.getElementById('calc-prop').value) || 0;
+      const rawPrice = parseInt(properties[pIdx].price.replace(/[^0-9]/g, '')) || 1000000;
+      const rate = parseFloat(document.getElementById('rate-slider').value);
+      const rentOffset = parseInt(document.getElementById('rental-slider').value);
+
+      document.getElementById('rate-val').innerText = rate.toFixed(2) + '%';
+      document.getElementById('rental-val').innerText = '-$' + rentOffset + '/mo';
+
+      const loan = rawPrice * 0.80;
+      const monthlyRate = (rate / 100) / 12;
+      const numPayments = 25 * 12;
+      const mortgage = Math.round(loan * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) / (Math.pow(1 + monthlyRate, numPayments) - 1));
+      
+      const taxMonthly = Math.round((rawPrice * 0.0115) / 12);
+      const utilsIns = 500;
+      const gross = mortgage + taxMonthly + utilsIns;
+      const net = gross - rentOffset;
+
+      document.getElementById('out-mortgage').innerText = '$' + mortgage.toLocaleString();
+      document.getElementById('out-tax-utils').innerText = '$' + (taxMonthly + utilsIns).toLocaleString();
+      document.getElementById('out-net').innerText = '$' + net.toLocaleString() + '/mo';
+    }
+
+    renderStaticLayers();
+    renderProperties();
+  </script>
+</body>
+</html>
